@@ -1,59 +1,113 @@
 ---
-title: "R Notebook"
+title: "project_code"
 output: html_notebook
 ---
-
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
-
 ```{r}
-plot(cars)
-```
-
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
-
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
-
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
-```{r}
-
 library(gbm)
 library(caret)
 set.seed(123) # For reproducibility of results
 # Assuming `wine` is your dataframe
 #white = 0, red = 1
 wine <- wine_quality_white_and_red
-wine$type <- ifelse(wine$type == "white", 0, 1)
-index <- createDataPartition(wine$quality, p = 0.8, list = FALSE)
-train_data <- wine[index, ]
-test_data <- wine[-index, ]
-set.seed(123) # For reproducibility of results
-# Fit the model
-gbm_model <- gbm(quality ~ ., data = train_data, 
-                 distribution = "gaussian",
-                 n.trees = 500, # Number of trees
-                 interaction.depth = 3, # Depth of each tree
-                 shrinkage = 0.01, # Learning rate
-                 cv.folds = 5, # Number of cross-validation folds
-                 n.minobsinnode = 10 # Minimum number of observations in the nodes
-)
-# Perform cross-validation
-cv_model <- gbm.perf(gbm_model, method = "cv")
-best_trees <- gbm_model$n.trees[cv_model]
-# Predict using the test set
-# Predict using the test set
-predictions <- predict(gbm_model, test_data, n.trees = gbm_model$best.iteration)
-# Evaluate model performance
-postResample(pred = predictions, obs = test_data$quality)
 
-# Dimension reduction
+# split into red and white wines
+split_wine <- split(wine, wine$type)
 
-# Get the importance data from the model
-importance <- summary(gbm_model)
-imp <- data.frame(importance)
+# Now you can access the data frames for red and white wine like this:
+wine_red <- split_wine$red
+wine_white <- split_wine$white
 
+# Remove the 'type' column from each data frame
+wine_red <- subset(wine_red, select = -type)
+wine_white <- subset(wine_white, select = -type)
 
+train_gbm <- function(wine) {
+  index <- createDataPartition(wine$quality, p = 0.8, list = FALSE)
+  train_data <- wine[index, ]
+  test_data <- wine[-index, ]
+  set.seed(123) # For reproducibility of results
+  # Fit the model
+  gbm_model <- gbm(quality ~ ., data = train_data, 
+                   distribution = "gaussian",
+                   n.trees = 500, # Number of trees
+                   interaction.depth = 3, # Depth of each tree
+                   shrinkage = 0.01, # Learning rate
+                   cv.folds = 5, # Number of cross-validation folds
+                   n.minobsinnode = 10 # Minimum number of observations in the nodes
+  )
+  # Perform cross-validation
+  cv_model <- gbm.perf(gbm_model, method = "cv")
+  best_trees <- gbm_model$n.trees[cv_model]
+
+  # Predict using the test set
+  predictions <- predict(gbm_model, test_data, n.trees = gbm_model$best.iteration)
+  # Evaluate model performance
+  postResample(pred = predictions, obs = test_data$quality)
+  
+  # Get the importance data from the model
+  importance <- summary(gbm_model)
+  imp <- data.frame(importance)
+  print(imp)
+}
+
+ res_red <- train_gbm(wine_red)
+ res_white <- train_gbm(wine_white)
+
+# Dimension reduction 
 
 ```
+```{r}
+# NN
+# Load necessary libraries
+library(keras)
+library(caret)
+library(tidyverse)
+
+# Assuming data is loaded into a variable named dataset
+# Normalize the data
+preprocess_params <- preProcess(dataset[,-ncol(dataset)], method = c("center", "scale"))
+normalized_data <- predict(preprocess_params, dataset[,-ncol(dataset)])
+
+# Split the data into training and testing sets
+set.seed(123) # for reproducibility
+training_samples <- createDataPartition(dataset$quality, p = 0.8, list = FALSE)
+train_data <- normalized_data[training_samples, ]
+train_labels <- dataset$quality[training_samples]
+test_data <- normalized_data[-training_samples, ]
+test_labels <- dataset$quality[-training_samples]
+
+# Define a simple neural network model
+model <- keras_model_sequential() %>%
+  layer_dense(units = 64, activation = 'relu', input_shape = dim(train_data)[2]) %>%
+  layer_dense(units = 64, activation = 'relu') %>%
+  layer_dense(units = 1) # No activation function for a regression problem
+
+# Compile the model
+model %>% compile(
+  optimizer = 'rmsprop',
+  loss = 'mse',
+  metrics = c('mae')
+)
+
+# Train the model
+history <- model %>% fit(
+  train_data,
+  train_labels,
+  epochs = 100,
+  validation_split = 0.2
+)
+
+# Evaluate the model
+model %>% evaluate(test_data, test_labels)
+
+# For dimensionality reduction using PCA
+pca_result <- prcomp(dataset[,-ncol(dataset)], center = TRUE, scale. = TRUE)
+summary(pca_result) # Shows importance of components
+
+# The following code can be used to plot the PCA results
+# This requires factoextra library
+library(factoextra)
+fviz_pca_ind(pca_result)
+```
+
 
