@@ -1,0 +1,59 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+```{r}
+
+library(gbm)
+library(caret)
+set.seed(123) # For reproducibility of results
+# Assuming `wine` is your dataframe
+#white = 0, red = 1
+wine <- wine_quality_white_and_red
+wine$type <- ifelse(wine$type == "white", 0, 1)
+index <- createDataPartition(wine$quality, p = 0.8, list = FALSE)
+train_data <- wine[index, ]
+test_data <- wine[-index, ]
+set.seed(123) # For reproducibility of results
+# Fit the model
+gbm_model <- gbm(quality ~ ., data = train_data, 
+                 distribution = "gaussian",
+                 n.trees = 500, # Number of trees
+                 interaction.depth = 3, # Depth of each tree
+                 shrinkage = 0.01, # Learning rate
+                 cv.folds = 5, # Number of cross-validation folds
+                 n.minobsinnode = 10 # Minimum number of observations in the nodes
+)
+# Perform cross-validation
+cv_model <- gbm.perf(gbm_model, method = "cv")
+best_trees <- gbm_model$n.trees[cv_model]
+# Predict using the test set
+# Predict using the test set
+predictions <- predict(gbm_model, test_data, n.trees = gbm_model$best.iteration)
+# Evaluate model performance
+postResample(pred = predictions, obs = test_data$quality)
+
+# Dimension reduction
+
+# Get the importance data from the model
+importance <- summary(gbm_model)
+imp <- data.frame(importance)
+
+
+
+```
+
