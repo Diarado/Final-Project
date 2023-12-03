@@ -5,15 +5,12 @@ output: html_notebook
 ```{r}
 library(gbm)
 library(caret)
-set.seed(123) # For reproducibility of results
-# Assuming `wine` is your dataframe
 #white = 0, red = 1
 wine <- wine_quality_white_and_red
 
 # split into red and white wines
 split_wine <- split(wine, wine$type)
 
-# Now you can access the data frames for red and white wine like this:
 wine_red <- split_wine$red
 wine_white <- split_wine$white
 
@@ -25,89 +22,104 @@ train_gbm <- function(wine) {
   index <- createDataPartition(wine$quality, p = 0.8, list = FALSE)
   train_data <- wine[index, ]
   test_data <- wine[-index, ]
-  set.seed(123) # For reproducibility of results
+
+  set.seed(123)
   # Fit the model
   gbm_model <- gbm(quality ~ ., data = train_data, 
                    distribution = "gaussian",
                    n.trees = 500, # Number of trees
-                   interaction.depth = 3, # Depth of each tree
+                   interaction.depth = 5, # Depth of each tree
                    shrinkage = 0.01, # Learning rate
-                   cv.folds = 5, # Number of cross-validation folds
+                   cv.folds = 50, # Number of cross-validation folds
                    n.minobsinnode = 10 # Minimum number of observations in the nodes
   )
-  # Perform cross-validation
+  # cross-validation
   cv_model <- gbm.perf(gbm_model, method = "cv")
   best_trees <- gbm_model$n.trees[cv_model]
 
   # Predict using the test set
-  predictions <- predict(gbm_model, test_data, n.trees = gbm_model$best.iteration)
-  # Evaluate model performance
-  postResample(pred = predictions, obs = test_data$quality)
+  predictions <- round(predict(gbm_model, test_data, n.trees = gbm_model$best.iteration))
   
   # Get the importance data from the model
   importance <- summary(gbm_model)
   imp <- data.frame(importance)
-  print(imp)
+
+  # Evaluate model performance
+  performance <- postResample(pred = predictions, obs = test_data$quality)
+  
+  #accuracy
+  accuracy <- sum(predictions == test_data$quality) / length(predictions)
+  return(list(importance = imp, performance = performance, accuracy = accuracy))
 }
 
- res_red <- train_gbm(wine_red)
- res_white <- train_gbm(wine_white)
+# initial model
+res_red <- train_gbm(wine_red)
+res_white <- train_gbm(wine_white)
+ 
+print(res_red$importance)
+print(res_white$importance)
 
 # Dimension reduction 
+selected_features <- c("alcohol", "sulphates", "volatile acidity", "total sulfur dioxide", "pH", "quality")
+wine_red <- subset(wine_red, select = selected_features)
+wine_white <- subset(wine_white, select = selected_features)
+
+# Train and evaluate models for red and white wines
+res_red <- train_gbm(wine_red)
+res_white <- train_gbm(wine_white)
+ 
+print(res_red$accuracy)
+print(res_white$accuracy)
 
 ```
 ```{r}
-# NN
-# Load necessary libraries
-library(keras)
-library(caret)
-library(tidyverse)
+# Load the nnet package for neural network modeling
+library(nnet)
+data <- wine_white
 
-# Assuming data is loaded into a variable named dataset
-# Normalize the data
-preprocess_params <- preProcess(dataset[,-ncol(dataset)], method = c("center", "scale"))
-normalized_data <- predict(preprocess_params, dataset[,-ncol(dataset)])
+# Convert the quality variable to numeric if it's not already
+data$quality <- as.numeric(data$quality)
 
-# Split the data into training and testing sets
-set.seed(123) # for reproducibility
-training_samples <- createDataPartition(dataset$quality, p = 0.8, list = FALSE)
-train_data <- normalized_data[training_samples, ]
-train_labels <- dataset$quality[training_samples]
-test_data <- normalized_data[-training_samples, ]
-test_labels <- dataset$quality[-training_samples]
+# Split the data into training and test sets
+set.seed(123) # Setting seed for reproducibility
+indices <- sample(1:nrow(data), size = 0.8 * nrow(data)) # 80% for training
+train_data <- data[indices, ]
+test_data <- data[-indices, ]
 
-# Define a simple neural network model
-model <- keras_model_sequential() %>%
-  layer_dense(units = 64, activation = 'relu', input_shape = dim(train_data)[2]) %>%
-  layer_dense(units = 64, activation = 'relu') %>%
-  layer_dense(units = 1) # No activation function for a regression problem
+# Normalize the data - very important for neural networks
+scale_parameters <- list(center = apply(train_data, 2, mean), scale = apply(train_data, 2, sd))
+train_data_scaled <- scale(train_data, center = scale_parameters$center, scale = scale_parameters$scale)
+test_data_scaled <- scale(test_data, center = scale_parameters$center, scale = scale_parameters$scale)
 
-# Compile the model
-model %>% compile(
-  optimizer = 'rmsprop',
-  loss = 'mse',
-  metrics = c('mae')
-)
+# Train the neural network for regression
+# size parameter refers to the number of units in the hidden layer
+# We can try increasing the size to add more neurons
+# Add a second hidden layer with size2 parameter
+nn_model <- nnet(quality ~ ., data = train_data_scaled, size = c(10, 5), linout = TRUE, maxit = 200, trace = FALSE)
 
-# Train the model
-history <- model %>% fit(
-  train_data,
-  train_labels,
-  epochs = 100,
-  validation_split = 0.2
-)
+# Predict quality on the test set
+predictions <- predict(nn_model, newdata = test_data_scaled, type = "raw")
 
-# Evaluate the model
-model %>% evaluate(test_data, test_labels)
+# Revert scaling to original scale for accuracy calculation
+predictions <- predictions * scale_parameters$scale['quality'] + scale_parameters$center['quality']
 
-# For dimensionality reduction using PCA
-pca_result <- prcomp(dataset[,-ncol(dataset)], center = TRUE, scale. = TRUE)
-summary(pca_result) # Shows importance of components
+# Round predictions to the nearest integer and ensure they fall between 0 and 10
+predictions <- round(predictions)
+predictions <- ifelse(predictions < 0, 0, predictions) # Replace values less than 0 with 0
+predictions <- ifelse(predictions > 10, 10, predictions) # Replace values greater than 10 with 10
 
-# The following code can be used to plot the PCA results
-# This requires factoextra library
-library(factoextra)
-fviz_pca_ind(pca_result)
+# Evaluate the model performance by calculating the proportion of correct predictions
+accuracy <- sum(predictions == test_data$quality) / length(predictions)
+print(paste("Accuracy:", accuracy))
+
+# Print a summary of the model
+print(nn_model)
+
+# Optionally, create a confusion matrix
+confusion_matrix <- table(Predicted = predictions, Actual = test_data$quality)
+print(confusion_matrix)
+
+
 ```
 
 
