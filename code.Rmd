@@ -1,10 +1,176 @@
 ---
 title: "project_code"
-output: html_notebook
+output: word_document
 ---
+```{r warning=FALSE}
+# KNN
+library(class)
+library(rsample)
+library(ggplot2)
+
+data <- wine_quality_white_and_red
+red_data <- subset(data, type == "red")
+white_data <- subset(data, type == "white")
+
+set.seed(2)
+
+knn_cross_validation <- function(data, features, k_values, num_folds) {
+  cv <- vfold_cv(data, v = num_folds, strata = "quality")
+  cv_results <- matrix(0, nrow = num_folds, ncol = length(k_values))
+
+  for (j in seq_along(k_values)) {
+    k_value <- k_values[j]
+    for (i in 1:num_folds) {
+      fold <- analysis(cv, i)
+      val <- assessment(cv, i)
+
+      fold_predictions <- knn_predict(fold, val, features, k_value)
+      cv_results[i, j] <- sum(fold_predictions == val$quality) / length(fold_predictions)
+    }
+  }
+  return(data.frame(k_values, mean_accuracy = colMeans(cv_results)))
+}
+
+k_values <- seq(1, 20, by = 2)
+num_folds <- 5
+
+red_cv_results <- knn_cross_validation(red_data, setdiff(names(data), c("type", "quality")), k_values, num_folds)
+white_cv_results <- knn_cross_validation(white_data, setdiff(names(data), c("type", "quality")), k_values, num_folds)
+
+optimal_k_red <- red_cv_results$k_values[which.max(red_cv_results$mean_accuracy)]
+optimal_k_white <- white_cv_results$k_values[which.max(white_cv_results$mean_accuracy)]
+
+red_optimal_k_predictions <- knn_predict(red_data, red_data, setdiff(names(data), c("type", "quality")), optimal_k_red)
+red_test_predictions <- knn_predict(red_data, red_data_test, setdiff(names(data), c("type", "quality")), optimal_k_red)
+
+white_optimal_k_predictions <- knn_predict(white_data, white_data, setdiff(names(data), c("type", "quality")), optimal_k_white)
+white_test_predictions <- knn_predict(white_data, white_data_test, setdiff(names(data), c("type", "quality")), optimal_k_white)
+
+accuracy_red_test <- sum(red_test_predictions == red_data_test$quality) / length(red_test_predictions)
+accuracy_white_test <- sum(white_test_predictions == white_data_test$quality) / length(white_test_predictions)
+
+cat("Optimal k for Red Wine: ", optimal_k_red, "\n")
+cat("Optimal k for White Wine: ", optimal_k_white, "\n")
+cat("Accuracy for Red Wine Test Set: ", accuracy_red_test, "\n")
+cat("Accuracy for White Wine Test Set: ", accuracy_white_test, "\n")
+
+plot_confusion_matrix <- function(conf_matrix, title) {
+  df <- as.data.frame(conf_matrix)
+  df <- reshape2::melt(df)
+
+  ggplot(df, aes(x = variable, fill = factor(value))) +
+    geom_bar(stat = "count", position = "dodge") +
+    labs(title = title, x = "Category", y = "Count") +
+    theme_minimal()
+}
+
+# Plot confusion matrix for red wine
+plot_confusion_matrix(confusion_matrix_red, "Confusion Matrix for Red Wine")
+
+# Plot confusion matrix for white wine
+plot_confusion_matrix(confusion_matrix_white, "Confusion Matrix for White Wine")
+
+```
+
+```{r}
+library(randomForest)
+
+rf_predict <- function(train_data, test_data, features) {
+  train_features <- train_data[, features]
+  test_features <- test_data[, features]
+  train_labels <- train_data$quality
+  
+  rf_model <- randomForest(train_features, train_labels, ntree = 500)
+  rf_predictions <- predict(rf_model, newdata = test_features)
+  
+  return(rf_predictions)
+}
+
+rf_red_predictions <- rf_predict(red_data_train, red_data_test, features)
+rf_white_predictions <- rf_predict(white_data_train, white_data_test, features)
+
+confusion_matrix_red <- table(Predicted = round(rf_red_predictions), Actual = round(red_data_test$quality))
+confusion_matrix_white <- table(Predicted = round(rf_white_predictions), Actual = round(white_data_test$quality))
+
+cat("Confusion Matrix for Red Wine:\n")
+print(confusion_matrix_red)
+cat("\nConfusion Matrix for White Wine:\n")
+print(confusion_matrix_white)
+
+accuracy_red <- sum(round(rf_red_predictions) == red_data_test$quality) / length(rf_red_predictions)
+accuracy_white <- sum(round(rf_white_predictions) == white_data_test$quality) / length(rf_white_predictions)
+
+cat("\nAccuracy for Red Wine: ", accuracy_red, "\n")
+cat("Accuracy for White Wine: ", accuracy_white, "\n")
+
+plot(rf_red_predictions, red_data_test$quality,
+     col = 'red', pch = 16,
+     main = "Random Forest Predictions vs. Actual (Red Wine)",
+     xlab = "Predicted Quality",
+     ylab = "Actual Quality")
+
+# Scatter plot for white wine predictions
+plot(rf_white_predictions, white_data_test$quality,
+     col = 'blue', pch = 16,
+     main = "Random Forest Predictions vs. Actual (White Wine)",
+     xlab = "Predicted Quality",
+     ylab = "Actual Quality")
+
+# Add a legend
+legend("topright", legend = c("Red Wine", "White Wine"), col = c('red', 'blue'), pch = 16)
+
+# Print a few predictions
+cat("Red Wine Predictions:\n", head(rf_red_predictions), "\n")
+cat("White Wine Predictions:\n", head(rf_white_predictions), "\n")
+
+
+```
+
+```{r}
+
+library(randomForest)
+
+rf_predict <- function(train_data, test_data, features) {
+  train_features <- train_data[, features]
+  test_features <- test_data[, features]
+  train_labels <- train_data$quality
+  
+  rf_model <- randomForest(train_features, train_labels, ntree = 500)
+  rf_predictions <- predict(rf_model, newdata = test_features)
+  
+  return(rf_predictions)
+}
+
+rf_red_predictions <- rf_predict(red_data_train, red_data_test, features)
+rf_white_predictions <- rf_predict(white_data_train, white_data_test, features)
+
+cat("Red Wine Predictions:\n", head(rf_red_predictions), "\n")
+cat("White Wine Predictions:\n", head(rf_white_predictions), "\n")
+
+plot(rf_red_predictions, red_data_test$quality,
+     col = 'red', pch = 16,
+     main = "Random Forest Predictions vs. Actual (Red Wine)",
+     xlab = "Predicted Quality",
+     ylab = "Actual Quality")
+
+# Scatter plot for white wine predictions
+plot(rf_white_predictions, white_data_test$quality,
+     col = 'blue', pch = 16,
+     main = "Random Forest Predictions vs. Actual (White Wine)",
+     xlab = "Predicted Quality",
+     ylab = "Actual Quality")
+
+# Add a legend
+legend("topright", legend = c("Red Wine", "White Wine"), col = c('red', 'blue'), pch = 16)
+
+```
+
+
+
 ```{r}
 library(gbm)
 library(caret)
+library(pROC)
 #white = 0, red = 1
 wine <- wine_quality_white_and_red
 
@@ -28,8 +194,8 @@ train_gbm <- function(wine) {
   gbm_model <- gbm(quality ~ ., data = train_data, 
                    distribution = "gaussian",
                    n.trees = 500, # Number of trees
-                   interaction.depth = 5, # Depth of each tree
-                   shrinkage = 0.01, # Learning rate
+                   interaction.depth = 6, # Depth of each tree
+                   shrinkage = 0.05, # Learning rate
                    cv.folds = 50, # Number of cross-validation folds
                    n.minobsinnode = 10 # Minimum number of observations in the nodes
   )
@@ -49,6 +215,19 @@ train_gbm <- function(wine) {
   
   #accuracy
   accuracy <- sum(predictions == test_data$quality) / length(predictions)
+  confusion_matrix <- table(Predicted = predictions, Actual = test_data$quality)
+  print(confusion_matrix)
+  
+  best_trees <- gbm.perf(gbm_model, method = "cv")
+
+  prob_predictions <- predict(gbm_model, test_data, n.trees = best_trees, type = "response")
+
+  # Calculate ROC metrics
+  roc_obj <- roc(test_data$quality, prob_predictions)
+
+  # Plot ROC curve
+  plot(roc_obj, main="ROC Curve")
+  
   return(list(importance = imp, performance = performance, accuracy = accuracy))
 }
 
@@ -58,66 +237,60 @@ res_white <- train_gbm(wine_white)
  
 print(res_red$importance)
 print(res_white$importance)
+print(res_red$accuracy)
+print(res_white$accuracy)
 
 # Dimension reduction 
 selected_features <- c("alcohol", "sulphates", "volatile acidity", "total sulfur dioxide", "pH", "quality")
-wine_red <- subset(wine_red, select = selected_features)
-wine_white <- subset(wine_white, select = selected_features)
+wine_red_re <- subset(wine_red, select = selected_features)
+wine_white_re <- subset(wine_white, select = selected_features)
 
 # Train and evaluate models for red and white wines
-res_red <- train_gbm(wine_red)
-res_white <- train_gbm(wine_white)
+res_red <- train_gbm(wine_red_re)
+res_white <- train_gbm(wine_white_re)
  
 print(res_red$accuracy)
 print(res_white$accuracy)
 
 ```
+
+
 ```{r}
-# Load the nnet package for neural network modeling
 library(nnet)
-data <- wine_white
 
-# Convert the quality variable to numeric if it's not already
-data$quality <- as.numeric(data$quality)
+train_nn <- function(data) {
+  data$quality <- as.numeric(data$quality)
 
-# Split the data into training and test sets
-set.seed(123) # Setting seed for reproducibility
-indices <- sample(1:nrow(data), size = 0.8 * nrow(data)) # 80% for training
-train_data <- data[indices, ]
-test_data <- data[-indices, ]
+  # Split the data into training and test sets
+  indices <- sample(1:nrow(data), size = 0.8 * nrow(data)) # 80% for training
+  train_data <- data[indices, ]
+  test_data <- data[-indices, ]
+  set.seed(123)
+  
+  # Train the neural network for regression
+  nn_model <- nnet(quality ~ ., data = train_data, size = 10, linout = TRUE, maxit = 200, trace = FALSE)
+  
+  # Predict quality on the test set
+  predictions <- predict(nn_model, newdata = test_data, type = "raw")
+  
+  # Round predictions to the nearest integer and ensure they fall between 0 and 10
+  predictions <- round(predictions)
+  predictions <- ifelse(predictions < 0, 0, predictions) 
+  predictions <- ifelse(predictions > 10, 10, predictions)
+  
+  # Evaluate the model performance
+  accuracy <- sum(predictions == test_data$quality) / length(predictions)
+  print(paste("Accuracy:", accuracy))
+  
+  
+  print(nn_model)
+  
+  confusion_matrix <- table(Predicted = predictions, Actual = test_data$quality)
+  print(confusion_matrix)
+}
 
-# Normalize the data - very important for neural networks
-scale_parameters <- list(center = apply(train_data, 2, mean), scale = apply(train_data, 2, sd))
-train_data_scaled <- scale(train_data, center = scale_parameters$center, scale = scale_parameters$scale)
-test_data_scaled <- scale(test_data, center = scale_parameters$center, scale = scale_parameters$scale)
-
-# Train the neural network for regression
-# size parameter refers to the number of units in the hidden layer
-# We can try increasing the size to add more neurons
-# Add a second hidden layer with size2 parameter
-nn_model <- nnet(quality ~ ., data = train_data_scaled, size = c(10, 5), linout = TRUE, maxit = 200, trace = FALSE)
-
-# Predict quality on the test set
-predictions <- predict(nn_model, newdata = test_data_scaled, type = "raw")
-
-# Revert scaling to original scale for accuracy calculation
-predictions <- predictions * scale_parameters$scale['quality'] + scale_parameters$center['quality']
-
-# Round predictions to the nearest integer and ensure they fall between 0 and 10
-predictions <- round(predictions)
-predictions <- ifelse(predictions < 0, 0, predictions) # Replace values less than 0 with 0
-predictions <- ifelse(predictions > 10, 10, predictions) # Replace values greater than 10 with 10
-
-# Evaluate the model performance by calculating the proportion of correct predictions
-accuracy <- sum(predictions == test_data$quality) / length(predictions)
-print(paste("Accuracy:", accuracy))
-
-# Print a summary of the model
-print(nn_model)
-
-# Optionally, create a confusion matrix
-confusion_matrix <- table(Predicted = predictions, Actual = test_data$quality)
-print(confusion_matrix)
+train_nn(wine_red)
+train_nn(wine_white)
 
 
 ```
